@@ -171,13 +171,45 @@ def dropTables():
 
 
 def addCritic(critic: Critic) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            "INSERT INTO critics VALUES({criticId}, {Name})").format(
+            criticId=sql.Literal(critic.getCriticID()),
+            Type=sql.Literal(critic.getName()))
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException.CHECK_VIOLATION as e:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        return ReturnValue.ALREADY_EXISTS
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    return ReturnValue.OK
 
 
 def deleteCritic(critic_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            f"DELETE FROM Critics WHERE CriticID = {critic_id}")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    if rows_effected == 0:
+        return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def getCriticProfile(critic_id: int) -> Critic:
@@ -186,13 +218,47 @@ def getCriticProfile(critic_id: int) -> Critic:
 
 
 def addActor(actor: Actor) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            "INSERT INTO actors VALUES({ActorId}, {Name}, {Age}, {Height})").format(
+            ActorId=sql.Literal(actor.getActorID()),
+            Name=sql.Literal(actor.getActorName()),
+            Age=sql.Literal(actor.getAge()),
+            Height=sql.Literal(actor.getHeight()))
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException.CHECK_VIOLATION as e:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        return ReturnValue.ALREADY_EXISTS
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    return ReturnValue.OK
 
 
 def deleteActor(actor_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            f"DELETE FROM Actors WHERE ActorID = {actor_id}")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    if rows_effected == 0:
+        return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def getActorProfile(actor_id: int) -> Actor:
@@ -211,8 +277,20 @@ def deleteMovie(movie_name: str, year: int) -> ReturnValue:
 
 
 def getMovieProfile(movie_name: str, year: int) -> Movie:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"SELECT * FROM Movies WHERE MovieName = {movie_name} AMD Year = {year}")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return Movie.badMovie()
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return Movie.badMovie()
+    return Movie(result[0]['Movieid'], result[0]['Name'])
 
 
 def addStudio(studio: Studio) -> ReturnValue:
@@ -226,8 +304,20 @@ def deleteStudio(studio_id: int) -> ReturnValue:
 
 
 def getStudioProfile(studio_id: int) -> Studio:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"SELECT * FROM Movies WHERE StudioID = {studio_id}")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return Studio.badStudio()
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return Studio.badStudio()
+    return Studio(result[0]['StudioID'], result[0]['Name'])
 
 
 def criticRatedMovie(movieName: str, movieYear: int, criticID: int, rating: int) -> ReturnValue:
