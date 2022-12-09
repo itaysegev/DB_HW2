@@ -217,8 +217,20 @@ def deleteCritic(critic_id: int) -> ReturnValue:
 
 
 def getCriticProfile(critic_id: int) -> Critic:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"SELECT * FROM Critic WHERE CriticID = {critic_id}")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return Critic.badCritic()
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return Critic.badCritic()
+    return Movie(result[0]['CriticID'], result[0]['Name'])
 
 
 def addActor(actor: Actor) -> ReturnValue:
@@ -266,18 +278,63 @@ def deleteActor(actor_id: int) -> ReturnValue:
 
 
 def getActorProfile(actor_id: int) -> Actor:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"SELECT * FROM Actor WHERE ActorID = {actor_id}")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return Actor.badActor()
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return Actor.badActor()
+    return Actor(result[0]['ActorID'], result[0]['Name'])
 
 
 def addMovie(movie: Movie) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            "INSERT INTO Movies VALUES({MovieName}, {Year}, {Genre})").format(
+            MovieName=sql.Literal(movie.getMovieName()),
+            Year=sql.Literal(movie.getYear()),
+            Genre=sql.Literal(movie.getGenre()))
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException.CHECK_VIOLATION as e:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        return ReturnValue.ALREADY_EXISTS
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    return ReturnValue.OK
 
 
 def deleteMovie(movie_name: str, year: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            f"DELETE FROM Movies WHERE MovieName = {movie_name} AMD Year = {year}")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    if rows_effected == 0:
+        return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def getMovieProfile(movie_name: str, year: int) -> Movie:
@@ -298,13 +355,45 @@ def getMovieProfile(movie_name: str, year: int) -> Movie:
 
 
 def addStudio(studio: Studio) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            "INSERT INTO Studios VALUES({studioID}, {Name})").format(
+            studioID=sql.Literal(studio.getStudioID()),
+            Name=sql.Literal(studio.getStudioName()))
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException.CHECK_VIOLATION as e:
+        return ReturnValue.BAD_PARAMS
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        return ReturnValue.ALREADY_EXISTS
+    except DatabaseException.NOT_NULL_VIOLATION:
+        return ReturnValue.BAD_PARAMS
+    except Exception as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    return ReturnValue.OK
 
 
 def deleteStudio(studio_id: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(
+            f"DELETE FROM Studios WHERE studioID = {studio_id} ")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+    if rows_effected == 0:
+        return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def getStudioProfile(studio_id: int) -> Studio:
@@ -349,8 +438,20 @@ def criticRatedMovie(movieName: str, movieYear: int, criticID: int, rating: int)
 
 
 def criticDidntRateMovie(movieName: str, movieYear: int, criticID: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"DELETE FROM CriticRatedMovie WHERE VALUES({criticID}, {movieName}, {movieYear};")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def actorPlayedInMovie(movieName: str, movieYear: int, actorID: int, salary: int, roles: List[str]) -> ReturnValue:
@@ -381,8 +482,21 @@ def actorPlayedInMovie(movieName: str, movieYear: int, actorID: int, salary: int
 
 
 def actorDidntPlayeInMovie(movieName: str, movieYear: int, actorID: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"DELETE FROM ActorOnMovie WHERE VALUES({movieName}, {movieYear}, {actorID};"
+                        f"DELETE FROM ActorRolesOnMovie(ActorID, MovieName, MovieYear) WHERE VALUES({movieName}, {movieYear}, {actorID};")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 def studioProducedMovie(studioID: int, movieName: str, movieYear: int, budget: int, revenue: int) -> ReturnValue:
@@ -410,8 +524,20 @@ def studioProducedMovie(studioID: int, movieName: str, movieYear: int, budget: i
 
 
 def studioDidntProduceMovie(studioID: int, movieName: str, movieYear: int) -> ReturnValue:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"DELETE FROM studioProducedMovie WHERE VALUES({movieName}, {movieYear}, {studioID};")
+        rows_effected, _ = conn.execute(query)
+        conn.commit()
+    except DatabaseException as e:
+        return ReturnValue.ERROR
+    finally:
+        if conn:
+            conn.close()
+        if rows_effected == 0:
+            return ReturnValue.NOT_EXISTS
+    return ReturnValue.OK
 
 
 # ---------------------------------- BASIC API: ----------------------------------
@@ -436,15 +562,34 @@ def averageRating(movieName: str, movieYear: int) -> float:
 
 
 def averageActorRating(actorID: int) -> float:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        selectByActorID = f"SELECT MovieName, MovieYear FROM ActorOnMovie WHERE ActorID={actorID}"
+        orderByRating = f"SELECT MovieName, MovieYear FROM CriticRatedMovie " \
+                        f"WHERE MovieName, MovieYear IN ({selectByActorID}) " \
+
+        query = sql.SQL(f"SELECT AVG(Rating) FROM CriticRatedMovie"
+                        f" WHERE MovieName, MovieYear = (SELECT * FROM ({orderByRating})")
+
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+
+    except Exception as e:
+        return 0
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return 0
+    return result[0]
 
 
 def bestPerformance(actor_id: int) -> Movie:
     conn = None
     try:
         conn = Connector.DBConnector()
-        selectByActorID = f"SELECT MovieName, MovieYear FROM Actors WHERE ActorID={actor_id}"
+        selectByActorID = f"SELECT MovieName, MovieYear FROM ActorOnMovie WHERE ActorID={actor_id}"
         orderByRating = f"SELECT MovieName, MovieYear FROM CriticRatedMovie " \
                         f"WHERE MovieName, MovieYear IN ({selectByActorID}) " \
                         f"ORDER BY AVG(Rating) ASC, Year DESC, MovieName ASC"
