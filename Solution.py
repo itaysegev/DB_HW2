@@ -646,8 +646,25 @@ def overlyInvestedInMovie(movie_name: str, movie_year: int, actor_id: int) -> bo
 
 
 def franchiseRevenue() -> List[Tuple[str, int]]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        buildMovies = f"SELECT MovieName, Year FROM Movies"
+        buildRevenue = f"SELECT MovieName, Year, Revenue FROM StudioProducedMovie"
+        joinMovieRevenue = f"SELECT MovieName, Revenue FROM ({buildRevenue}) RIGHT OUTER JOIN ({buildMovies})"
+        query = sql.SQL(f"SELECT MovieName, SUM(Revenue) FROM ({joinMovieRevenue}),"
+                        f"GROUP BY MovieName"
+                        f" ORDER BY MovieName DESC")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return None
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return []
+    return result
 
 
 def studioRevenueByYear() -> List[Tuple[str, int]]:
@@ -666,7 +683,24 @@ def averageAgeByGenre() -> List[Tuple[str, float]]:
 
 
 def getExclusiveActors() -> List[Tuple[int, int]]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        buildActorMovie = f"SELECT ActorID, MovieName, Year FROM ActorOnMovie"
+        buildStudioMovie = f"SELECT StudioID, MovieName, Year FROM StudioProducedMovie"
+        joinActorStudio = f"SELECT ActorID, StudioID FROM ({buildActorMovie}) INNER JOIN ({buildStudioMovie})"
+        query = sql.SQL(f"SELECT ActorID, StudioID FROM ({joinActorStudio}),"
+                        f"GROUP BY ActorID, StudioID"
+                        f" HAVING COUNT(StudioID) = 1")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return None
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return []
+    return result
 
 # GOOD LUCK!
