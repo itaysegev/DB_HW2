@@ -18,8 +18,7 @@ def createTables():
     try:
         conn = Connector.DBConnector()
         createCritics = "CREATE TABLE Critics(CriticId INTEGER PRIMARY KEY NOT NULL," \
-                        "Name TEXT NOT NULL," \
-                        "CHECK ( CriticId >0 ));"
+                        "Name TEXT NOT NULL);"
 
         createMovies = "CREATE TABLE Movies(MovieName TEXT NOT NULL," \
                        "Year INTEGER NOT NULL," \
@@ -68,7 +67,7 @@ def createTables():
                                  "Rating INTEGER NOT NULL," \
                                  "FOREIGN KEY (CriticId) REFERENCES Critics(CriticId) ON DELETE CASCADE," \
                                  "FOREIGN KEY (MovieName,Year) REFERENCES Movies(MovieName,Year) ON DELETE CASCADE," \
-                                 "CHECK (Rating>1 AND Rating<5)," \
+                                 "CHECK (Rating BETWEEN 1 AND 5)," \
                                  "PRIMARY KEY(CriticID,MovieName,Year));"
 
         query = sql.SQL(f"BEGIN; "
@@ -84,7 +83,6 @@ def createTables():
         conn.execute(query)
         conn.commit()
     except Exception as e:
-        print(e)
         return ReturnValue.ERROR
     finally:
         if conn:
@@ -122,6 +120,7 @@ def clearTables():
                         f"{clearStudioProduceMovie}"
                         f"{clearCriticRatedMovie}"
                         f"COMMIT;")
+
         conn.execute(query)
         conn.commit()
     except DatabaseException as e:
@@ -203,7 +202,7 @@ def deleteCritic(critic_id: int) -> ReturnValue:
     try:
         conn = Connector.DBConnector()
         query = sql.SQL(
-            f"DELETE FROM Critics WHERE CriticID = {critic_id}")
+            "DELETE FROM Critics WHERE CriticID = {critic_id}").format(critic_id=sql.Literal(critic_id))
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException as e:
@@ -230,7 +229,7 @@ def getCriticProfile(critic_id: int) -> Critic:
             conn.close()
     if result.isEmpty():
         return Critic.badCritic()
-    return Movie(result[0]['CriticID'], result[0]['Name'])
+    return Critic(result[0]['CriticID'], result[0]['Name'])
 
 
 def addActor(actor: Actor) -> ReturnValue:
@@ -264,7 +263,7 @@ def deleteActor(actor_id: int) -> ReturnValue:
     try:
         conn = Connector.DBConnector()
         query = sql.SQL(
-            f"DELETE FROM Actors WHERE ActorID = {actor_id}")
+            "DELETE FROM Actors WHERE ActorID = {actor_id}").format(actor_id=sql.Literal(actor_id))
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException as e:
@@ -341,7 +340,9 @@ def getMovieProfile(movie_name: str, year: int) -> Movie:
     conn = None
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL(f"SELECT * FROM Movies WHERE MovieName = {movie_name} AMD Year = {year}")
+        query = sql.SQL("SELECT * FROM Movies WHERE MovieName = {name} AMD Year = {year}").format(
+            name=sql.Literal(movie_name), year=sql.Literal(year)
+        )
         rows_effected, result = conn.execute(query)
         conn.commit()
     except Exception as e:
@@ -400,7 +401,7 @@ def getStudioProfile(studio_id: int) -> Studio:
     conn = None
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL(f"SELECT * FROM Movies WHERE StudioID = {studio_id}")
+        query = sql.SQL("SELECT * FROM Movies WHERE StudioID = {studio_id}").format(studio_id=sql.Literal(studio_id))
         rows_effected, result = conn.execute(query)
         conn.commit()
     except Exception as e:
@@ -418,7 +419,9 @@ def criticRatedMovie(movieName: str, movieYear: int, criticID: int, rating: int)
     try:
         conn = Connector.DBConnector()
         query = sql.SQL(
-            f"INSERT INTO CriticRatedMovie VALUES({criticID}, {movieName}, {movieYear}, {rating})")
+            "INSERT INTO CriticRatedMovie VALUES({criticID}, {Name}, {Year}, {rating})").format(
+            criticID=sql.Literal(criticID), Name=sql.Literal(movieName), Year=sql.Literal(movieYear),
+            rating=sql.Literal(rating))
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException.FOREIGN_KEY_VIOLATION as e:
@@ -458,11 +461,16 @@ def actorPlayedInMovie(movieName: str, movieYear: int, actorID: int, salary: int
     conn = None
     try:
         conn = Connector.DBConnector()
-        insertActorOnMovie = f"INSERT INTO ActorOnMovie VALUES({movieName}, {movieYear}, {actorID}, {salary})"
-        insertActorRolesOnMovie = f"INSERT INTO ActorRolesOnMovie(ActorID, MovieName, MovieYear, Rating)"\
-        " VALUES " + ', '.join((actorID, movieName, movieYear, role).__str__() for role in roles)
-        query = sql.SQL(f"{insertActorOnMovie};"
-                        f"{insertActorRolesOnMovie}")
+        add_actor = f"INSERT INTO ActorOnMovie VALUES ('{movieName}', {movieYear}, {actorID}, {salary});"
+        values = "VALUES"
+        for tup in ((movieName, movieYear, actorID, role) for role in roles):
+            values += tup.__str__() + ','
+        values = values[:-1]
+        add_role_to_actor = f"INSERT INTO ActorRolesOnMovie(MovieName, Year, ActorId, Role)  {values};"
+        query = sql.SQL(f"BEGIN; "
+                        f"{add_actor} "
+                        f"{add_role_to_actor} "
+                        f"COMMIT;")
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException.FOREIGN_KEY_VIOLATION as e:
@@ -486,7 +494,7 @@ def actorDidntPlayeInMovie(movieName: str, movieYear: int, actorID: int) -> Retu
     try:
         conn = Connector.DBConnector()
         query = sql.SQL(f"DELETE FROM ActorOnMovie WHERE VALUES({movieName}, {movieYear}, {actorID};"
-                        f"DELETE FROM ActorRolesOnMovie(ActorID, MovieName, MovieYear) WHERE VALUES({movieName}, {movieYear}, {actorID};")
+                        f"DELETE FROM ActorRolesOnMovie(ActorID, MovieName, Year) WHERE VALUES({movieName}, {movieYear}, {actorID};")
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException as e:
@@ -504,7 +512,9 @@ def studioProducedMovie(studioID: int, movieName: str, movieYear: int, budget: i
     try:
         conn = Connector.DBConnector()
         query = sql.SQL(
-            f"INSERT INTO studioProducedMovie VALUES({movieName}, {movieYear}, {studioID}, {budget}, {revenue}))")
+            "INSERT INTO studioProducedMovie VALUES({Name}, {Year}, {ID}, {budget}, {revenue})").format(
+            Name=sql.Literal(movieName), Year=sql.Literal(movieYear), ID=sql.Literal(studioID),
+            budget=sql.Literal(budget), revenue=sql.Literal(revenue))
         rows_effected, _ = conn.execute(query)
         conn.commit()
     except DatabaseException.FOREIGN_KEY_VIOLATION as e:
@@ -545,8 +555,10 @@ def averageRating(movieName: str, movieYear: int) -> float:
     conn = None
     try:
         conn = Connector.DBConnector()
-        query = sql.SQL(f"SELECT AVG(Rating) FROM CriticRatedMovie"
-                        f" WHERE MovieName = {movieName} AND MovieYear = {movieYear}")
+        query = sql.SQL("SELECT AVG(Rating) FROM CriticRatedMovie "
+                        "WHERE MovieName={Name} AND Year={Year}").format(
+            Name=sql.Literal(movieName), Year=sql.Literal(movieYear)
+        )
         rows_effected, result = conn.execute(query)
         conn.commit()
 
@@ -555,9 +567,9 @@ def averageRating(movieName: str, movieYear: int) -> float:
     finally:
         if conn:
             conn.close()
-    if result.isEmpty():
+    if result.isEmpty() or result[0]['avg'] is None:
         return 0
-    return result[0]
+    return result[0]['avg']
 
 
 
@@ -565,12 +577,12 @@ def averageActorRating(actorID: int) -> float:
     conn = None
     try:
         conn = Connector.DBConnector()
-        selectByActorID = f"SELECT MovieName, MovieYear FROM ActorOnMovie WHERE ActorID={actorID}"
-        orderByRating = f"SELECT MovieName, MovieYear FROM CriticRatedMovie " \
-                        f"WHERE MovieName, MovieYear IN ({selectByActorID}) " \
+        selectByActorID = f"SELECT MovieName, Year FROM ActorOnMovie WHERE ActorID={actorID}"
+        orderByRating = f"SELECT MovieName, Year FROM CriticRatedMovie " \
+                        f"WHERE MovieName, Year IN ({selectByActorID}) " \
 
         query = sql.SQL(f"SELECT AVG(Rating) FROM CriticRatedMovie"
-                        f" WHERE MovieName, MovieYear = (SELECT * FROM ({orderByRating})")
+                        f" WHERE MovieName, Year = (SELECT * FROM ({orderByRating})")
 
         rows_effected, result = conn.execute(query)
         conn.commit()
@@ -589,14 +601,14 @@ def bestPerformance(actor_id: int) -> Movie:
     conn = None
     try:
         conn = Connector.DBConnector()
-        selectByActorID = f"SELECT MovieName, MovieYear FROM ActorOnMovie WHERE ActorID={actor_id}"
-        orderByRating = f"SELECT MovieName, MovieYear FROM CriticRatedMovie " \
-                        f"WHERE MovieName, MovieYear IN ({selectByActorID}) " \
-                        f"ORDER BY AVG(Rating) ASC, Year DESC, MovieName ASC"
+        selectByActorID = f"SELECT MovieName, Year FROM ActorOnMovie WHERE ActorID={actor_id}"
+        orderByRating = f"SELECT MovieName, Year FROM CriticRatedMovie " \
+                        f"WHERE (MovieName, Year) IN ({selectByActorID}) " \
+                        f"GROUP BY MovieName, Year " \
+                        f"ORDER BY AVG(Rating) DESC, Year ASC, MovieName DESC"
 
         query = sql.SQL(f"SELECT * FROM Movies"
-                        f" WHERE MovieName, MovieYear = (SELECT * FROM ({orderByRating})"
-                        f" ORDER BY 1)")
+                        f" WHERE (MovieName, Year) IN ({orderByRating})")
         rows_effected, result = conn.execute(query)
         conn.commit()
 
@@ -607,7 +619,7 @@ def bestPerformance(actor_id: int) -> Movie:
             conn.close()
     if result.isEmpty():
         return Movie.badMovie()
-    return Movie(result[0]['MovieName'], result[0]['Year'])
+    return Movie(result[0]['MovieName'], result[0]['Year'], result[0]['Genre'])
 
 
 def stageCrewBudget(movieName: str, movieYear: int) -> int:
@@ -619,16 +631,16 @@ def overlyInvestedInMovie(movie_name: str, movie_year: int, actor_id: int) -> bo
     conn = None
     try:
         conn = Connector.DBConnector()
-        buildEachMovieRolesNumber = f"SELECT ActorID, COUNT(Role) FROM ActorRolesOnMovie " \
-                           f"WHERE MovieName={movie_name} AND Year={movie_year} " \
+        buildEachMovieRolesNumber = f"SELECT ActorID, MovieName, Year, COUNT(Role) FROM ActorRolesOnMovie " \
+                           f"WHERE MovieName='{movie_name}' AND Year={movie_year} AND ActorID={actor_id} " \
+                           f"GROUP BY ActorID, MovieName, Year"
+        buildActorRolesNumber = f"SELECT MovieName, Year, COUNT(Role) AS TotalCount FROM ActorRolesOnMovie " \
+                           f"WHERE MovieName='{movie_name}' AND Year={movie_year} " \
                            f"GROUP BY MovieName, Year"
-        buildActorRolesNumber = f"SELECT COUNT(Role) FROM ActorRolesOnMovie " \
-                           f"WHERE MovieName={movie_name} AND Year={movie_year} " \
-                           f"GROUP BY MovieName, Year, ActorID"
-
-        query = sql.SQL(f"SELECT R1.ActorID FROM ({buildEachMovieRolesNumber}) R1,"
-                        f" ({buildActorRolesNumber}) R2"
-                        f" WHERE R2.COUNT(Role) * 2 > R1.COUNT(Role)")
+        query = sql.SQL(f"SELECT ActorID FROM ({buildEachMovieRolesNumber}) AS R1 INNER JOIN"
+                        f" ({buildActorRolesNumber}) AS R2 "
+                        f"ON R1.MovieName=R2.MovieName AND R1.Year=R2.Year "
+                        f"WHERE 2* COUNT >= TotalCount")
         rows_effected, result = conn.execute(query)
         conn.commit()
     except Exception as e:
@@ -641,7 +653,6 @@ def overlyInvestedInMovie(movie_name: str, movie_year: int, actor_id: int) -> bo
     return True
 
 
-
 # ---------------------------------- ADVANCED API: ----------------------------------
 
 
@@ -651,10 +662,14 @@ def franchiseRevenue() -> List[Tuple[str, int]]:
         conn = Connector.DBConnector()
         buildMovies = f"SELECT MovieName, Year FROM Movies"
         buildRevenue = f"SELECT MovieName, Year, Revenue FROM StudioProducedMovie"
-        joinMovieRevenue = f"SELECT MovieName, Revenue FROM ({buildRevenue}) RIGHT OUTER JOIN ({buildMovies})"
-        query = sql.SQL(f"SELECT MovieName, SUM(Revenue) FROM ({joinMovieRevenue}),"
-                        f"GROUP BY MovieName"
-                        f" ORDER BY MovieName DESC")
+
+        joinMovieRevenue = f"SELECT M.MovieName, COALESCE(SUM(Revenue), 0) FROM ({buildRevenue}) AS R RIGHT OUTER JOIN" \
+                           f" ({buildMovies}) AS M " \
+                           f"ON R.MovieName=M.MovieName AND R.Year=M.Year " \
+                           f"GROUP BY M.MovieName " \
+                           f"ORDER BY M.MovieName DESC"
+
+        query = sql.SQL(joinMovieRevenue)
         rows_effected, result = conn.execute(query)
         conn.commit()
     except Exception as e:
@@ -664,7 +679,7 @@ def franchiseRevenue() -> List[Tuple[str, int]]:
             conn.close()
     if result.isEmpty():
         return []
-    return result
+    return result.rows
 
 
 def studioRevenueByYear() -> List[Tuple[str, int]]:
@@ -673,8 +688,24 @@ def studioRevenueByYear() -> List[Tuple[str, int]]:
 
 
 def getFanCritics() -> List[Tuple[int, int]]:
-    # TODO: implement
-    pass
+    conn = None
+    try:
+        conn = Connector.DBConnector()
+        query = sql.SQL(f"SELECT DISTINCT CriticID, StudioID FROM"
+                        f" (SELECT CriticID, MovieName, Year FROM CriticRatedMovie) AS C"
+                        f" INNER JOIN (SELECT StudioID, MovieName, Year, Revenue FROM StudioProducedMovie) AS S"
+                        f" ON C.MovieName=S.MovieName AND C.Year=S.Year"
+                        f" ORDER BY CriticID DESC, StudioID DESC")
+        rows_effected, result = conn.execute(query)
+        conn.commit()
+    except Exception as e:
+        return None
+    finally:
+        if conn:
+            conn.close()
+    if result.isEmpty():
+        return []
+    return result.rows
 
 
 def averageAgeByGenre() -> List[Tuple[str, float]]:
@@ -686,13 +717,23 @@ def getExclusiveActors() -> List[Tuple[int, int]]:
     conn = None
     try:
         conn = Connector.DBConnector()
-        buildActorMovie = f"SELECT ActorID, MovieName, Year FROM ActorOnMovie"
-        buildStudioMovie = f"SELECT StudioID, MovieName, Year FROM StudioProducedMovie"
-        joinActorStudio = f"SELECT ActorID, StudioID FROM ({buildActorMovie}) INNER JOIN ({buildStudioMovie})"
-        query = sql.SQL(f"SELECT ActorID, StudioID FROM ({joinActorStudio}),"
-                        f"GROUP BY ActorID, StudioID"
-                        f" HAVING COUNT(StudioID) = 1")
+        buildActorMovie = "SELECT ActorID, MovieName, Year FROM ActorOnMovie"
+        buildStudioMovie = "SELECT StudioID, MovieName, Year FROM StudioProducedMovie"
+        joinActorStudio = f"SELECT DISTINCT ActorID, StudioID FROM ({buildActorMovie}) AS a LEFT JOIN ({buildStudioMovie}) AS s " \
+                          "ON a.MovieName=s.MovieName AND a.Year=s.Year "
+        buildIndActor = f"SELECT ActorID FROM ({joinActorStudio}) AS j " \
+                        f"WHERE j.StudioID IS NULL"
+        exclusiveActor = f"SELECT ActorID FROM ({joinActorStudio}) AS j "\
+                         f"WHERE j.ActorID NOT IN ({buildIndActor}) "\
+                         f"GROUP BY ActorID "\
+                         f"HAVING COUNT(StudioID) = 1"
+
+        query = sql.SQL(f"SELECT ActorID, StudioID FROM ({joinActorStudio}) AS a "
+                        f"WHERE ActorID IN ({exclusiveActor}) "
+                        f"ORDER BY ActorID DESC")
+
         rows_effected, result = conn.execute(query)
+
         conn.commit()
     except Exception as e:
         return None
@@ -701,6 +742,6 @@ def getExclusiveActors() -> List[Tuple[int, int]]:
             conn.close()
     if result.isEmpty():
         return []
-    return result
+    return result.rows
 
 # GOOD LUCK!
