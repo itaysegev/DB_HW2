@@ -27,6 +27,10 @@ def createTables():
                        "PRIMARY KEY (MovieName,Year)," \
                        "CHECK (Genre in ('Drama', 'Action', 'Comedy', 'Horror') AND Year>=1895));"
 
+        viewMovieExists = "CREATE VIEW MovieExists AS " \
+                          "SELECT MovieName, Year " \
+                          "FROM Movies;"
+
         createActor = "CREATE TABLE Actors(ActorId INTEGER PRIMARY KEY NOT NULL," \
                       "Name TEXT NOT NULL," \
                       "Age INTEGER NOT NULL," \
@@ -44,6 +48,10 @@ def createTables():
                              "FOREIGN KEY (ActorId) REFERENCES Actors(ActorId) ON DELETE CASCADE," \
                              "PRIMARY KEY(MovieName,Year,ActorId),"\
                              "CHECK (Salary>0));"
+
+        viewActorOnMovie = "CREATE VIEW ActorPlayInMovie AS " \
+                           "SELECT ActorId, MovieName, Year " \
+                           "FROM ActorOnMovie;"
 
         createActorRolesOnMovie = "CREATE TABLE ActorRolesOnMovie(MovieName TEXT NOT NULL," \
                                   "Year INTEGER NOT NULL," \
@@ -63,6 +71,14 @@ def createTables():
                                    "PRIMARY KEY(MovieName,Year,StudioId)," \
                                    "CONSTRAINT Movie UNIQUE (MovieName,Year));"
 
+        viewIsStudioProducedMovie = "CREATE VIEW IsStudioProducedMovie AS " \
+                                    "SELECT StudioId, MovieName, Year " \
+                                    "FROM StudioProducedMovie;"
+
+        viewMovieBudget = "CREATE VIEW MovieBudget AS " \
+                          "SELECT Budget, MovieName, Year " \
+                          "FROM StudioProducedMovie;"
+
         createCriticRatedMovie = "CREATE TABLE CriticRatedMovie(CriticId INTEGER NOT NULL," \
                                  "MovieName TEXT NOT NULL," \
                                  "Year INTEGER NOT NULL," \
@@ -72,15 +88,24 @@ def createTables():
                                  "CHECK (Rating BETWEEN 1 AND 5)," \
                                  "PRIMARY KEY(CriticID,MovieName,Year));"
 
+        viewCriticRatedMovie = "CREATE VIEW CriticFanOfMovie AS " \
+                               "SELECT CriticId, MovieName, Year " \
+                               "FROM CriticRatedMovie;"
+
         query = sql.SQL(f"BEGIN; "
                         f"{createCritics}"
                         f"{createMovies}"
+                        f"{viewMovieExists}"
                         f"{createActor}"
                         f"{createStudio}"
                         f"{createActorOnMovie}"
+                        f"{viewActorOnMovie}"
                         f"{createActorRolesOnMovie}"
                         f"{createStudioProducedMovie}"
+                        f"{viewIsStudioProducedMovie}"
+                        f"{viewMovieBudget}"
                         f"{createCriticRatedMovie}"
+                        f"{viewCriticRatedMovie}"
                         f"COMMIT;")
         conn.execute(query)
         conn.commit()
@@ -150,9 +175,9 @@ def dropTables():
 
         dropActorRolesOnMovie = "DROP TABLE ActorRolesOnMovie;"
 
-        dropStudioProduceMovie = "DROP TABLE StudioProducedMovie;"
+        dropStudioProduceMovie = "DROP TABLE StudioProducedMovie CASCADE;"
 
-        dropCriticRatedMovie = "DROP TABLE CriticRatedMovie;"
+        dropCriticRatedMovie = "DROP TABLE CriticRatedMovie CASCADE;"
 
         query = sql.SQL(f"BEGIN; "
                         f"{dropActors}"
@@ -617,7 +642,7 @@ def averageActorRating(actorID: int) -> float:
     conn = None
     try:
         conn = Connector.DBConnector()
-        selectByActorID = f"SELECT MovieName, Year FROM ActorOnMovie WHERE ActorId={actorID}"
+        selectByActorID = f"SELECT MovieName, Year FROM ActorPlayInMovie WHERE ActorId={actorID}"
         orderByRating = f"SELECT AVG(Rating) FROM CriticRatedMovie " \
                         f"WHERE (MovieName, Year) IN ({selectByActorID})"
         query = sql.SQL(orderByRating)
@@ -637,7 +662,7 @@ def bestPerformance(actor_id: int) -> Movie:
     conn = None
     try:
         conn = Connector.DBConnector()
-        selectByActorID = f"SELECT MovieName, Year FROM ActorOnMovie WHERE ActorID={actor_id}"
+        selectByActorID = f"SELECT MovieName, Year FROM ActorPlayInMovie WHERE ActorID={actor_id}"
         joinActorRating = f"SELECT A.MovieName AS MovieName, A.Year AS Year, COALESCE(C.Rating, 0) AS Rating" \
                           f" FROM ({selectByActorID}) AS A " \
                           f"LEFT JOIN CriticRatedMovie AS C ON " \
@@ -668,9 +693,9 @@ def stageCrewBudget(movieName: str, movieYear: int) -> int:
         buildSalaryAmount = f"SELECT MovieName, Year, Sum(Salary) FROM ActorOnMovie " \
                             f"WHERE MovieName='{movieName}' AND Year={movieYear} " \
                             f"GROUP BY MovieName, Year"
-        buildBudget = f"SELECT MovieName, Year, Budget FROM StudioProducedMovie " \
+        buildBudget = f"SELECT * FROM MovieBudget " \
                       f"WHERE MovieName='{movieName}' AND Year={movieYear}"
-        buildAllMovies = f"SELECT MovieName, Year FROM Movies " \
+        buildAllMovies = f"SELECT * FROM MovieExists " \
                           f"WHERE MovieName='{movieName}' AND Year={movieYear}"
 
         joinMovieBudget = f"SELECT M.MovieName, M.Year, COALESCE(B.Budget, 0) AS Budget FROM ({buildAllMovies}) AS M " \
@@ -725,11 +750,10 @@ def franchiseRevenue() -> List[Tuple[str, int]]:
     conn = None
     try:
         conn = Connector.DBConnector()
-        buildMovies = f"SELECT MovieName, Year FROM Movies"
         buildRevenue = f"SELECT MovieName, Year, Revenue FROM StudioProducedMovie"
 
         joinMovieRevenue = f"SELECT M.MovieName, COALESCE(SUM(Revenue), 0) FROM ({buildRevenue}) AS R RIGHT OUTER JOIN" \
-                           f" ({buildMovies}) AS M " \
+                           f" MovieExists AS M " \
                            f"ON R.MovieName=M.MovieName AND R.Year=M.Year " \
                            f"GROUP BY M.MovieName " \
                            f"ORDER BY M.MovieName DESC"
@@ -772,10 +796,10 @@ def getFanCritics() -> List[Tuple[int, int]]:
     conn = None
     try:
         conn = Connector.DBConnector()
-        buildNumOfMovies = f"SELECT StudioId, COUNT((MovieName, Year)) AS Count FROM StudioProducedMovie " \
+        buildNumOfMovies = f"SELECT StudioId, COUNT((MovieName, Year)) AS Count FROM IsStudioProducedMovie " \
                            f"GROUP BY StudioId"
         buildNumOfCritics = f"SELECT CriticId, StudioId, COUNT((C.MovieName, C.Year)) AS Count FROM" \
-                            f" (SELECT CriticId, MovieName, Year FROM CriticRatedMovie) AS C" \
+                            f" CriticFanOfMovie AS C" \
                             f" INNER JOIN (SELECT StudioId, MovieName, Year, Revenue FROM StudioProducedMovie) AS S" \
                             f" ON C.MovieName=S.MovieName AND C.Year=S.Year" \
                             f" GROUP BY CriticId, StudioId"
@@ -829,9 +853,8 @@ def getExclusiveActors() -> List[Tuple[int, int]]:
     conn = None
     try:
         conn = Connector.DBConnector()
-        buildActorMovie = "SELECT ActorID, MovieName, Year FROM ActorOnMovie"
-        buildStudioMovie = "SELECT StudioID, MovieName, Year FROM StudioProducedMovie"
-        joinActorStudio = f"SELECT DISTINCT ActorID, StudioID FROM ({buildActorMovie}) AS a LEFT JOIN ({buildStudioMovie}) AS s " \
+        joinActorStudio = f"SELECT DISTINCT ActorID, StudioID FROM ActorPlayInMovie AS a" \
+                          f" LEFT JOIN IsStudioProducedMovie AS s " \
                           "ON a.MovieName=s.MovieName AND a.Year=s.Year "
         buildIndActor = f"SELECT ActorID FROM ({joinActorStudio}) AS j " \
                         f"WHERE j.StudioID IS NULL"
