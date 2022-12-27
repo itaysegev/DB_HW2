@@ -19,7 +19,8 @@ def createTables():
     try:
         conn = Connector.DBConnector()
         createCritics = "CREATE TABLE Critics(CriticId INTEGER PRIMARY KEY NOT NULL," \
-                        "Name TEXT NOT NULL);"
+                        "Name TEXT NOT NULL," \
+                        "CHECK ( CriticId >0 ));"
 
         createMovies = "CREATE TABLE Movies(MovieName TEXT NOT NULL," \
                        "Year INTEGER NOT NULL," \
@@ -38,7 +39,8 @@ def createTables():
                       "CHECK ( ActorId >0 AND Age>0 AND Height>0 ));"
 
         createStudio = "CREATE TABLE Studios(StudioId INTEGER PRIMARY KEY NOT NULL," \
-                       "Name TEXT NOT NULL);"
+                       "Name TEXT NOT NULL," \
+                       "CHECK ( StudioId >0 ));"
 
         createActorOnMovie = "CREATE TABLE ActorOnMovie(MovieName TEXT NOT NULL," \
                              "Year INTEGER NOT NULL," \
@@ -67,7 +69,7 @@ def createTables():
                                    "Revenue INTEGER NOT NULL," \
                                    "FOREIGN KEY (MovieName,Year) REFERENCES Movies(MovieName,Year) ON DELETE CASCADE," \
                                    "FOREIGN KEY (StudioId) REFERENCES Studios(StudioId) ON DELETE CASCADE," \
-                                   "CHECK (Budget>0 AND Revenue>0)," \
+                                   "CHECK (Budget>=0 AND Revenue>=0)," \
                                    "PRIMARY KEY(MovieName,Year,StudioId)," \
                                    "CONSTRAINT Movie UNIQUE (MovieName,Year));"
 
@@ -192,7 +194,6 @@ def dropTables():
         conn.execute(query)
         conn.commit()
     except DatabaseException as e:
-        print(e)
         return ReturnValue.ERROR
     finally:
         if conn:
@@ -536,23 +537,6 @@ def actorDidntPlayInMovie(movieName: str, movieYear: int, actorID: int) -> Retur
     return ReturnValue.OK
 
 
-def printActorsInMovies():
-    conn = None
-    try:
-        conn = Connector.DBConnector()
-        query = sql.SQL(f"SELECT * FROM ActorRolesOnMovie")
-        rows_effected, result = conn.execute(query)
-        conn.commit()
-        print(result)
-    except DatabaseException as e:
-        return ReturnValue.ERROR
-    finally:
-        if conn:
-            conn.close()
-        if rows_effected == 0:
-            return ReturnValue.NOT_EXISTS
-    return ReturnValue.OK
-
 def getActorsRoleInMovie(actor_id: int, movie_name: str, movieYear:int) -> List[str]:
     conn = None
     try:
@@ -635,7 +619,7 @@ def averageRating(movieName: str, movieYear: int) -> float:
             conn.close()
     if result.isEmpty() or result[0]['avg'] is None:
         return 0
-    return result[0]['avg']
+    return float(result[0]['avg'])
 
 
 def averageActorRating(actorID: int) -> float:
@@ -643,7 +627,12 @@ def averageActorRating(actorID: int) -> float:
     try:
         conn = Connector.DBConnector()
         selectByActorID = f"SELECT MovieName, Year FROM ActorPlayInMovie WHERE ActorId={actorID}"
-        orderByRating = f"SELECT AVG(Rating) FROM CriticRatedMovie " \
+        joinMovieRating = f"SELECT A.MovieName AS MovieName, A.Year AS Year, AVG(COALESCE(C.Rating, 0)) AS Rating" \
+                          f" FROM ({selectByActorID}) AS A " \
+                          f"LEFT JOIN CriticRatedMovie AS C ON " \
+                          f"A.MovieName=C.MovieName AND A.Year=C.Year " \
+                          f"GROUP BY A.MovieName ,A.Year"
+        orderByRating = f"SELECT AVG(Rating) AS AVG FROM ({joinMovieRating}) AS J " \
                         f"WHERE (MovieName, Year) IN ({selectByActorID})"
         query = sql.SQL(orderByRating)
         rows_effected, result = conn.execute(query)
@@ -655,7 +644,7 @@ def averageActorRating(actorID: int) -> float:
             conn.close()
     if result.isEmpty() or not result[0]['AVG']:
         return 0
-    return result[0]['AVG']
+    return float(result[0]['AVG'])
 
 
 def bestPerformance(actor_id: int) -> Movie:
@@ -714,7 +703,7 @@ def stageCrewBudget(movieName: str, movieYear: int) -> int:
             conn.close()
     if result.isEmpty():
         return -1
-    return result[0]['Diff']
+    return int(result[0]['Diff'])
 
 
 def overlyInvestedInMovie(movie_name: str, movie_year: int, actor_id: int) -> bool:
@@ -771,7 +760,7 @@ def franchiseRevenue() -> List[Tuple[str, int]]:
     return result.rows
 
 
-def studioRevenueByYear() -> List[Tuple[str, int]]:
+def studioRevenueByYear() -> List[Tuple[int, int]]:
     conn = None
     try:
         conn = Connector.DBConnector()
@@ -800,7 +789,7 @@ def getFanCritics() -> List[Tuple[int, int]]:
                            f"GROUP BY StudioId"
         buildNumOfCritics = f"SELECT CriticId, StudioId, COUNT((C.MovieName, C.Year)) AS Count FROM" \
                             f" CriticFanOfMovie AS C" \
-                            f" INNER JOIN (SELECT StudioId, MovieName, Year, Revenue FROM StudioProducedMovie) AS S" \
+                            f" INNER JOIN IsStudioProducedMovie AS S" \
                             f" ON C.MovieName=S.MovieName AND C.Year=S.Year" \
                             f" GROUP BY CriticId, StudioId"
         joinMoviesCritics = f"SELECT C.CriticId, C.StudioId FROM ({buildNumOfCritics}) AS C INNER JOIN" \
@@ -826,14 +815,13 @@ def averageAgeByGenre() -> List[Tuple[str, float]]:
     try:
         conn = Connector.DBConnector()
         buildActor = f"SELECT ActorId, Age FROM Actors"
-        buildMovie = f"SELECT ActorId, MovieName FROM ActorOnMovie"
-        buildGenre = f"SELECT MovieName, Genre FROM Movies"
-        joinMovieActor = f"SELECT M.ActorId, M.MovieName, A.Age FROM ({buildMovie}) As M " \
+        buildGenre = f"SELECT MovieName, Year, Genre FROM Movies"
+        joinMovieActor = f"SELECT M.ActorId, M.MovieName, M.Year, A.Age FROM ActorPlayInMovie As M " \
                          f"INNER JOIN ({buildActor}) As A" \
                          " ON M.ActorId=A.ActorId"
         joinAgeGenre = f"SELECT DISTINCT M.Genre AS Genre, A.Age AS Age, A.ActorId FROM ({joinMovieActor}) AS A " \
                        f"INNER JOIN ({buildGenre}) AS M " \
-                       f"ON A.MovieName=M.MovieName"
+                       f"ON A.MovieName=M.MovieName AND A.Year=M.Year"
         query = sql.SQL(f"SELECT Genre, AVG(Age) FROM ({joinAgeGenre}) AS A "
                         f"GROUP BY Genre "
                         f"ORDER BY Genre ASC")
@@ -846,7 +834,7 @@ def averageAgeByGenre() -> List[Tuple[str, float]]:
             conn.close()
     if result.isEmpty():
         return []
-    return result.rows
+    return [(tup[0], float(tup[1])) for tup in result.rows]
 
 
 def getExclusiveActors() -> List[Tuple[int, int]]:
